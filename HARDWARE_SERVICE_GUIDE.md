@@ -57,13 +57,21 @@
 
 | Виробник / Модель інвертора | RS485-A (Data +) | RS485-B (Data -) | GND (Земля) | Примітки |
 |---|---|---|---|---|
-| **Deye / Sunsynk (1-фазні та 3-фазні)** | **Pin 7** | **Pin 8** | Pin 3 або Pin 6 | За замовчуванням порт BMS очікує CAN або RS485 (Pylontech) |
-| **Felicity Solar (IVEM / FLA / LUX)** | **Pin 1** (або Pin 5)| **Pin 2** (або Pin 6)| Pin 8 | Modbus RTU (9600 8N1), регістри 0x1000..0x1100 або Pylontech |
-| **Solis (Ginlong RHI / S5 / S6)** | **Pin 2** | **Pin 1** | Pin 3 | Швидкість 9600 або 19200 |
-| **Luxpower (LXP / SNA)** | **Pin 1** | **Pin 2** | Pin 3 | У деяких моделях A=Pin 3, B=Pin 4 |
-| **Growatt (SPF / SPH)** | **Pin 1** | **Pin 2** | Pin 5 | Режим Lithium (L01/L51) |
-| **Voltronic / Axpert / Anenji** | **Pin 3** (або Pin 5)| **Pin 5** (або Pin 6)| Pin 8 | Modbus RTU або ASCII |
-| **Victron Energy (Color Control / Cerbo)** | **Pin 7** | **Pin 8** | Pin 3 | Тип кабелю Type A |
+| **1. Deye / Sunsynk (1-фазні та 3-фазні)** | **Pin 7** | **Pin 8** | Pin 3 або 6 | Порт BMS очікує RS485 (Pylontech) або CAN |
+| **2. Victron Energy (Cerbo GX / Venus)** | **Pin 7** | **Pin 8** | Pin 3 | Type A RS485 / VE.Can |
+| **3. Luxpower (LXP / SNA / ECO)** | **Pin 1** (або Pin 3)| **Pin 2** (або Pin 4)| Pin 8 | Pylontech RTU / CAN |
+| **4. Growatt (SPF / SPH / MIN)** | **Pin 1** | **Pin 2** | Pin 5 | Режим Lithium (L01/L51) |
+| **5. Solis (Ginlong RHI / S5 / S6)** | **Pin 2** | **Pin 1** | Pin 3 | Швидкість 9600 або 19200 |
+| **6. Felicity Solar (IVEM / FLA / LUX)** | **Pin 1** (або Pin 5)| **Pin 2** (або Pin 6)| Pin 8 | Modbus RTU (0x1000..0x1100) або Pylontech |
+| **7. Voltronic Power (Axpert / Infini)** | **Pin 3** (або Pin 5)| **Pin 5** (або Pin 6)| Pin 8 | Програма 05: Lib / PYL |
+| **8. SRNE (HES / HF / ASF)** | **Pin 1** (або Pin 7)| **Pin 2** (або Pin 8)| Pin 8 | Режим PYL / WOW (Modbus 0x0100) |
+| **9. Must Solar (PH1800 / PV1800)** | **Pin 2** | **Pin 1** | Pin 3 | Modbus RTU 9600 8N1 |
+| **10. GoodWe (ES / EM / SBP)** | **Pin 1** | **Pin 2** | Pin 3 | Slave ID: 247 або 0x01 |
+| **11. Huawei (SUN2000 / ESM)** | **Pin 1** | **Pin 2** | Pin 3 | Адреси 0xD6 / 0xD7 (Huawei ESM) |
+| **12. Sofar Solar (HYD / ME3000)** | **Pin 1** | **Pin 2** | Pin 3 | Регістри 0x0200..0x0210 |
+| **13. PowMr / Anenji (All-in-One)** | **Pin 1** (або Pin 3)| **Pin 2** (або Pin 5)| Pin 8 | Клони Voltronic/SRNE |
+| **14. Easun Power (iSolar / SMX)** | **Pin 1** (або Pin 3)| **Pin 2** (або Pin 5)| Pin 8 | Pylontech Modbus RTU |
+| **15. Axioma Energy (ISMPPT / BF)** | **Pin 3** | **Pin 5** | Pin 8 | Voltronic / Pylontech сумісний |
 
 ```
 Модуль TTL-RS485                        Порт BMS інвертора (Конектор RJ45 8P8C)

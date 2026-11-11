@@ -61,7 +61,7 @@ void RS485Sniffer::sendBatteryResponse(uint8_t slaveAddr, uint8_t fc, uint16_t s
         uint16_t regIdx = startReg + r;
         uint16_t val = 0;
 
-        if (regIdx == 0) val = 5250;              // 52.50 V
+        if (regIdx == 0) val = 5250;              // 52.50 V (0.01V)
         else if (regIdx == 1) val = 0;            // 0.0 A
         else if (regIdx >= 2 && regIdx <= 16) val = 3500; // 3.500 V per cell
         else if (regIdx == 18) val = 25;          // 25 °C PCB
@@ -70,6 +70,15 @@ void RS485Sniffer::sendBatteryResponse(uint8_t slaveAddr, uint8_t fc, uint16_t s
         else if (regIdx == 23) val = 100;         // 100% SOH
         else if (regIdx == 24) val = 85;          // 85% SOC
         else if (regIdx == 25) val = 0x0001;      // Status Normal
+        // Sofar Solar 0x0200 block support
+        else if (regIdx == 0x020C) val = 5250;    // Bat Voltage 52.50V
+        else if (regIdx == 0x020D) val = 0;       // Bat Current 0.0A
+        else if (regIdx == 0x020F) val = 85;      // Bat SOC 85%
+        else if (regIdx == 0x0210) val = 25;      // Bat Temp 25C
+        // Felicity / SRNE / Growatt support
+        else if (regIdx >= 0x1000 && regIdx <= 0x100F) val = 3500;
+        else if (regIdx >= 0x3000 && regIdx <= 0x3010) val = 525; // 0.1V scale for Solis
+        else if (regIdx >= 840 && regIdx <= 843) val = (regIdx == 843) ? 850 : 525; // Victron 0.1 scale
         else val = 0;
 
         txBuf[3 + r * 2] = (val >> 8) & 0xFF;
@@ -145,19 +154,31 @@ void RS485Sniffer::parseFrame(const uint8_t* frame, size_t len, BatteryPack* pac
         inverterInfo.startRegister = startReg;
         inverterInfo.registerCount = regCount;
 
-        // Auto signature identification
+        // Auto signature identification across Top 15 Solar Inverter Brands
         if (addr == 0x01 && (startReg == 0x0000 || startReg == 0x0100)) {
             inverterInfo.detectedSignature = "Deye / Luxpower / Pylontech";
         } else if (addr == 0x01 && (startReg >= 0x1000 && startReg <= 0x1100)) {
             inverterInfo.detectedSignature = "Felicity Solar Modbus";
-        } else if (addr == 0xD6 || addr == 0xD7) {
-            inverterInfo.detectedSignature = "Huawei ESM";
+        } else if (addr == 0x01 && (startReg >= 0x0100 && startReg <= 0x0140)) {
+            inverterInfo.detectedSignature = "SRNE / PowMr / Anenji";
+        } else if (addr == 0x01 && (startReg >= 0x0020 && startReg <= 0x0060)) {
+            inverterInfo.detectedSignature = "Growatt Lithium (L01/L51)";
         } else if (startReg >= 0x3000 && startReg <= 0x3500) {
-            inverterInfo.detectedSignature = "Solis / Ginlong";
-        } else if (startReg >= 0x0020 && startReg <= 0x0050) {
-            inverterInfo.detectedSignature = "Growatt Modbus";
+            inverterInfo.detectedSignature = "Solis (Ginlong RHI/S5/S6)";
+        } else if (startReg >= 0x0200 && startReg <= 0x0250) {
+            inverterInfo.detectedSignature = "Sofar Solar (HYD / ME3000)";
+        } else if (startReg >= 0x6200 && startReg <= 0x6300) {
+            inverterInfo.detectedSignature = "Must Solar (PH1800/PV1800)";
+        } else if (addr == 0xF7 || addr == 247) {
+            inverterInfo.detectedSignature = "GoodWe ES/EM / SRNE Broadcast";
+        } else if (addr == 0xD6 || addr == 0xD7) {
+            inverterInfo.detectedSignature = "Huawei ESM Industrial";
+        } else if (addr == 100 || (startReg >= 840 && startReg <= 860)) {
+            inverterInfo.detectedSignature = "Victron Energy Venus/GX";
+        } else if (addr >= 0x01 && addr <= 0x04) {
+            inverterInfo.detectedSignature = "Voltronic / Easun / Axioma";
         } else {
-            inverterInfo.detectedSignature = "Standard Modbus RTU";
+            inverterInfo.detectedSignature = "Standard Modbus RTU Inverter";
         }
 
         // Format HEX for live UI display
