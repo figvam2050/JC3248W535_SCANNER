@@ -1989,7 +1989,26 @@ static void update_ui() {
         }
     }
 
-    if (alarms) {
+    if (Sniffer.inverterInfo.isDetected) {
+        lv_obj_set_style_bg_color(card_alarm_banner, lv_color_hex(0x064E3B), 0);
+        lv_obj_set_style_border_color(card_alarm_banner, lv_color_hex(CLR_EMERALD), 0);
+        lv_label_set_text(lbl_alarm_icon, LV_SYMBOL_OK);
+        lv_obj_set_style_text_color(lbl_alarm_icon, lv_color_hex(CLR_EMERALD), 0);
+
+        String title = "INVERTER: " + Sniffer.inverterInfo.detectedSignature;
+        lv_label_set_text(lbl_alarm_title, title.c_str());
+        lv_obj_set_style_text_color(lbl_alarm_title, lv_color_hex(CLR_EMERALD), 0);
+
+        char detailBuf[96];
+        snprintf(detailBuf, sizeof(detailBuf), "Addr:0x%02X | Regs:0x%04X..0x%04X | %ums | %s",
+            Sniffer.inverterInfo.targetSlaveAddr,
+            Sniffer.inverterInfo.startRegister,
+            Sniffer.inverterInfo.startRegister + Sniffer.inverterInfo.registerCount - 1,
+            (unsigned int)Sniffer.inverterInfo.pollIntervalMs,
+            Sniffer.inverterInfo.lastHex
+        );
+        lv_label_set_text(lbl_alarm_details, detailBuf);
+    } else if (alarms) {
         lv_obj_set_style_bg_color(card_alarm_banner, lv_color_hex(0x4C0519), 0);
         lv_obj_set_style_border_color(card_alarm_banner, lv_color_hex(CLR_ROSE), 0);
         lv_label_set_text(lbl_alarm_icon, LV_SYMBOL_WARNING);
@@ -2001,15 +2020,17 @@ static void update_ui() {
 
         lv_label_set_text(lbl_alarm_details, firstAlarmDesc.c_str());
     } else {
-        lv_obj_set_style_bg_color(card_alarm_banner, lv_color_hex(0x064E3B), 0);
-        lv_obj_set_style_border_color(card_alarm_banner, lv_color_hex(CLR_EMERALD), 0);
-        lv_label_set_text(lbl_alarm_icon, LV_SYMBOL_OK);
-        lv_obj_set_style_text_color(lbl_alarm_icon, lv_color_hex(CLR_EMERALD), 0);
+        lv_obj_set_style_bg_color(card_alarm_banner, lv_color_hex(CLR_PANEL_INNER), 0);
+        lv_obj_set_style_border_color(card_alarm_banner, lv_color_hex(CLR_BORDER), 0);
+        lv_label_set_text(lbl_alarm_icon, LV_SYMBOL_REFRESH);
+        lv_obj_set_style_text_color(lbl_alarm_icon, lv_color_hex(CLR_AMBER), 0);
 
-        lv_label_set_text(lbl_alarm_title, "SYSTEM STATUS: ALL OK");
-        lv_obj_set_style_text_color(lbl_alarm_title, lv_color_hex(CLR_EMERALD), 0);
+        lv_label_set_text(lbl_alarm_title, "SCANNING BMS PORT...");
+        lv_obj_set_style_text_color(lbl_alarm_title, lv_color_hex(CLR_AMBER), 0);
 
-        lv_label_set_text(lbl_alarm_details, "No active warnings, protections or faults");
+        char detailBuf[64];
+        snprintf(detailBuf, sizeof(detailBuf), "Listening for inverter query at %u bps...", (unsigned int)Sniffer.getCurrentBaud());
+        lv_label_set_text(lbl_alarm_details, detailBuf);
     }
 
     char buf[64];

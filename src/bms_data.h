@@ -36,6 +36,23 @@ struct BatteryPack {
     uint32_t cycles = 0;
 };
 
+struct InverterQuery {
+    bool isDetected = false;
+    uint32_t lastSeenMs = 0;
+    uint32_t pollIntervalMs = 0;
+    uint32_t totalQueries = 0;
+    uint32_t crcErrors = 0;
+
+    uint32_t baudRate = 9600;
+    uint8_t targetSlaveAddr = 0;
+    uint8_t functionCode = 0;
+    uint16_t startRegister = 0;
+    uint16_t registerCount = 0;
+    String detectedSignature = "Unknown"; // e.g. "Deye/Pylontech", "Huawei ESM", "Solis", "Growatt"
+    
+    char lastHex[64] = {0};
+};
+
 struct BankSummary {
     float totalVoltage = 0.0f;
     float totalCurrent = 0.0f;

@@ -53,16 +53,12 @@ void RS485Sniffer::parseFrame(const uint8_t* frame, size_t len, BatteryPack* pac
     if (len < 5) return;
     uint8_t addr = frame[0];
     uint8_t fc = frame[1];
-    uint8_t byteCount = frame[2];
-
-    if (fc != 0x03 || addr < 1 || addr > MAX_BATTERIES) return;
-    if (len != (size_t)(byteCount + 5)) return;
 
     // Check CRC
     uint16_t expectedCrc = (frame[len - 1] << 8) | frame[len - 2];
     bool crcOk = (calculateCRC(frame, len - 2) == expectedCrc);
 
-    // If raw logger is active on MicroSD, record frame
+    // Record raw frame to SD card logger
     Logger.logRawPacket(_baudRates[_baudIdx], frame, len, crcOk);
 
     if (!crcOk) {
@@ -71,6 +67,57 @@ void RS485Sniffer::parseFrame(const uint8_t* frame, size_t len, BatteryPack* pac
     }
 
     _rxPackets++;
+
+    // --- CASE A: Master Query from INVERTER (Standard 8-byte Modbus RTU) ---
+    // [Addr] [FC: 0x03 or 0x04] [StartRegHi] [StartRegLo] [RegCountHi] [RegCountLo] [CRCLo] [CRCHi]
+    if (len == 8 && (fc == 0x03 || fc == 0x04)) {
+        uint16_t startReg = (frame[2] << 8) | frame[3];
+        uint16_t regCount = (frame[4] << 8) | frame[5];
+
+        uint32_t now = millis();
+        if (inverterInfo.lastSeenMs > 0) {
+            inverterInfo.pollIntervalMs = now - inverterInfo.lastSeenMs;
+        }
+        inverterInfo.isDetected = true;
+        inverterInfo.lastSeenMs = now;
+        inverterInfo.totalQueries++;
+        inverterInfo.baudRate = _baudRates[_baudIdx];
+        inverterInfo.targetSlaveAddr = addr;
+        inverterInfo.functionCode = fc;
+        inverterInfo.startRegister = startReg;
+        inverterInfo.registerCount = regCount;
+
+        // Auto signature identification
+        if (addr == 0x01 && (startReg == 0x0000 || startReg == 0x0100)) {
+            inverterInfo.detectedSignature = "Deye / Luxpower / Pylontech";
+        } else if (addr == 0xD6 || addr == 0xD7) {
+            inverterInfo.detectedSignature = "Huawei ESM";
+        } else if (startReg >= 0x3000 && startReg <= 0x3500) {
+            inverterInfo.detectedSignature = "Solis / Ginlong";
+        } else if (startReg >= 0x0020 && startReg <= 0x0050) {
+            inverterInfo.detectedSignature = "Growatt Modbus";
+        } else {
+            inverterInfo.detectedSignature = "Standard Modbus RTU";
+        }
+
+        // Format HEX for live UI display
+        snprintf(inverterInfo.lastHex, sizeof(inverterInfo.lastHex),
+            "%02X %02X %02X %02X %02X %02X %02X %02X",
+            frame[0], frame[1], frame[2], frame[3], frame[4], frame[5], frame[6], frame[7]
+        );
+
+        if (demoMode) {
+            demoMode = false;
+            Serial.printf("[INVERTER DETECTED] %s at %u bps! Addr: %02X, Regs: 0x%04X..0x%04X\n",
+                inverterInfo.detectedSignature.c_str(), _baudRates[_baudIdx], addr, startReg, startReg + regCount - 1);
+        }
+        return;
+    }
+
+    // --- CASE B: Slave Response (e.g. from real BMS or battery emulator) ---
+    uint8_t byteCount = frame[2];
+    if (fc != 0x03 || addr < 1 || addr > MAX_BATTERIES) return;
+    if (len != (size_t)(byteCount + 5)) return;
 
     // We have real verified RS485 traffic: disable demo mode and lock baud rate!
     if (demoMode) {
@@ -170,8 +217,19 @@ void RS485Sniffer::update(BatteryPack* packs, SemaphoreHandle_t mutex) {
         while (i + 4 < _rxLen) {
             uint8_t addr = _rxBuf[i];
             uint8_t fc = _rxBuf[i + 1];
-            uint8_t byteCount = _rxBuf[i + 2];
 
+            // Check A: Standard 8-byte Inverter Modbus Request (FC03 or FC04)
+            if ((fc == 0x03 || fc == 0x04) && (i + 8 <= _rxLen)) {
+                uint16_t expectedCrc = (_rxBuf[i + 7] << 8) | _rxBuf[i + 6];
+                if (calculateCRC(&_rxBuf[i], 6) == expectedCrc) {
+                    parseFrame(&_rxBuf[i], 8, packs, mutex);
+                    i += 8;
+                    continue;
+                }
+            }
+
+            // Check B: Slave Response with byteCount (FC03)
+            uint8_t byteCount = _rxBuf[i + 2];
             if (fc == 0x03 && addr >= 1 && addr <= MAX_BATTERIES && byteCount >= 10 && byteCount <= 120 && (byteCount % 2 == 0)) {
                 size_t frameLen = byteCount + 5;
                 if (i + frameLen <= _rxLen) {

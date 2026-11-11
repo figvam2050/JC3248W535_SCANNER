@@ -15,6 +15,8 @@ public:
     bool demoMode = true; // Enabled by default until hardware RS485 signal arrives
     void updateDemo(BatteryPack* packs, SemaphoreHandle_t mutex);
 
+    InverterQuery inverterInfo;
+
     // Scanner / Diagnostic Info
     uint32_t getCurrentBaud() const { return _baudRates[_baudIdx]; }
     uint32_t getRxPackets() const { return _rxPackets; }
