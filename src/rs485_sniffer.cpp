@@ -26,7 +26,7 @@ void RS485Sniffer::setBaudRate(uint32_t baud) {
     if (!_port) return;
     _port->end();
     delay(10);
-    _port->begin(baud, SERIAL_8N1, RS485_RX_PIN, -1);
+    _port->begin(baud, SERIAL_8N1, RS485_RX_PIN, RS485_TX_PIN);
     _rxLen = 0;
     _lastBaudSwitchMs = millis();
     Serial.printf("[RS485] Baud rate set to %u bps\n", baud);
@@ -37,16 +37,74 @@ void RS485Sniffer::nextBaudRate() {
     setBaudRate(_baudRates[_baudIdx]);
 }
 
+void RS485Sniffer::sendBatteryResponse(uint8_t slaveAddr, uint8_t fc, uint16_t startReg, uint16_t regCount) {
+    if (!_port || regCount == 0 || regCount > 64) return;
+
+    // Standard Modbus RTU Response:
+    // [Addr] [FC] [ByteCount] [Reg0_Hi] [Reg0_Lo] ... [CRCLo] [CRCHi]
+    uint8_t byteCount = regCount * 2;
+    uint8_t txBuf[140];
+    txBuf[0] = slaveAddr;
+    txBuf[1] = fc;
+    txBuf[2] = byteCount;
+
+    // Fill simulated 15S battery data:
+    // Reg 0: Voltage 52.50V (5250)
+    // Reg 1: Current 0.0A (0)
+    // Reg 2..16: 15 Cells voltages (3500 mV each)
+    // Reg 18: Temp PCB 25C
+    // Reg 19: Temp Avg 24C
+    // Reg 21: Capacity Remaining 100 Ah
+    // Reg 24: SOC 85%
+    // Reg 25: Status 0x0001 (Charging / Normal)
+    for (uint16_t r = 0; r < regCount; r++) {
+        uint16_t regIdx = startReg + r;
+        uint16_t val = 0;
+
+        if (regIdx == 0) val = 5250;              // 52.50 V
+        else if (regIdx == 1) val = 0;            // 0.0 A
+        else if (regIdx >= 2 && regIdx <= 16) val = 3500; // 3.500 V per cell
+        else if (regIdx == 18) val = 25;          // 25 °C PCB
+        else if (regIdx == 19) val = 24;          // 24 °C Avg
+        else if (regIdx == 21) val = 100;         // 100 Ah
+        else if (regIdx == 23) val = 100;         // 100% SOH
+        else if (regIdx == 24) val = 85;          // 85% SOC
+        else if (regIdx == 25) val = 0x0001;      // Status Normal
+        else val = 0;
+
+        txBuf[3 + r * 2] = (val >> 8) & 0xFF;
+        txBuf[3 + r * 2 + 1] = val & 0xFF;
+    }
+
+    size_t payloadLen = 3 + byteCount;
+    uint16_t crc = calculateCRC(txBuf, payloadLen);
+    txBuf[payloadLen] = crc & 0xFF;
+    txBuf[payloadLen + 1] = (crc >> 8) & 0xFF;
+    size_t totalTxLen = payloadLen + 2;
+
+    // Small delay to simulate BMS processing time (2-5 ms)
+    delay(3);
+    _port->write(txBuf, totalTxLen);
+    _port->flush();
+
+    inverterInfo.totalResponsesSent++;
+
+    // Record our TX response in SD raw log
+    Logger.logRawPacket(_baudRates[_baudIdx], txBuf, totalTxLen, true);
+    Serial.printf("[EMULATOR TX] Sent %u bytes battery response to inverter Addr %02X\n", (unsigned int)totalTxLen, slaveAddr);
+}
+
 void RS485Sniffer::begin(HardwareSerial* serialPort) {
     _port = serialPort;
     _baudIdx = 0;
     _lastBaudSwitchMs = millis();
-    // Passive sniffer on GPIO 44 (RX only, TX not used)
-    _port->begin(_baudRates[_baudIdx], SERIAL_8N1, RS485_RX_PIN, -1);
+    // RX on GPIO 44, TX on GPIO 43 for battery response emulation
+    _port->begin(_baudRates[_baudIdx], SERIAL_8N1, RS485_RX_PIN, RS485_TX_PIN);
     _rxLen = 0;
     _rxPackets = 0;
     _crcErrors = 0;
     _rawBytesCount = 0;
+    inverterInfo.state = SCANNER_STATE_SEARCHING;
 }
 
 void RS485Sniffer::parseFrame(const uint8_t* frame, size_t len, BatteryPack* packs, SemaphoreHandle_t mutex) {
@@ -110,6 +168,25 @@ void RS485Sniffer::parseFrame(const uint8_t* frame, size_t len, BatteryPack* pac
             demoMode = false;
             Serial.printf("[INVERTER DETECTED] %s at %u bps! Addr: %02X, Regs: 0x%04X..0x%04X\n",
                 inverterInfo.detectedSignature.c_str(), _baudRates[_baudIdx], addr, startReg, startReg + regCount - 1);
+        }
+
+        // State Machine Transition: SEARCHING -> TESTING
+        if (inverterInfo.state == SCANNER_STATE_SEARCHING) {
+            inverterInfo.state = SCANNER_STATE_TESTING;
+            inverterInfo.testStartMs = millis();
+        }
+
+        // Check if inverter continues polling after our response => MATCH SUCCESS!
+        if (inverterInfo.totalResponsesSent > 0) {
+            inverterInfo.followUpQueriesCount++;
+            if (inverterInfo.followUpQueriesCount >= 2) {
+                inverterInfo.handShakeSuccess = true;
+            }
+        }
+
+        // Send battery response emulation if enabled
+        if (enableEmulation && inverterInfo.state == SCANNER_STATE_TESTING) {
+            sendBatteryResponse(addr, fc, startReg, regCount);
         }
         return;
     }
@@ -255,7 +332,15 @@ void RS485Sniffer::update(BatteryPack* packs, SemaphoreHandle_t mutex) {
         }
     }
 
-    // 5. If demoMode is still active, run simulation for screen preview
+    // 5. Test Window Timer (State Machine TESTING -> FINISHED)
+    if (inverterInfo.state == SCANNER_STATE_TESTING) {
+        if (millis() - inverterInfo.testStartMs >= (inverterInfo.testDurationSec * 1000UL)) {
+            inverterInfo.state = SCANNER_STATE_FINISHED;
+            Serial.println("[SCANNER] Test window complete! Status: FINISHED.");
+        }
+    }
+
+    // 6. If demoMode is still active, run simulation for screen preview
     if (demoMode) {
         updateDemo(packs, mutex);
         return;

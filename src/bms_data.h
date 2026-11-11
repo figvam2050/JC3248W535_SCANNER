@@ -36,6 +36,12 @@ struct BatteryPack {
     uint32_t cycles = 0;
 };
 
+enum ScannerState {
+    SCANNER_STATE_SEARCHING = 0,  // Yellow: Auto-scanning baud rates, listening for inverter
+    SCANNER_STATE_TESTING = 1,    // Blue: Inverter detected, logging & sending battery emulation
+    SCANNER_STATE_FINISHED = 2    // Green: Test complete! Sound alert, safe to power off
+};
+
 struct InverterQuery {
     bool isDetected = false;
     uint32_t lastSeenMs = 0;
@@ -48,9 +54,17 @@ struct InverterQuery {
     uint8_t functionCode = 0;
     uint16_t startRegister = 0;
     uint16_t registerCount = 0;
-    String detectedSignature = "Unknown"; // e.g. "Deye/Pylontech", "Huawei ESM", "Solis", "Growatt"
+    String detectedSignature = "Unknown"; // e.g. "Deye / Pylontech", "Huawei ESM", "Solis", "Growatt"
     
     char lastHex[64] = {0};
+
+    // Emulation feedback
+    uint32_t totalResponsesSent = 0;
+    uint32_t followUpQueriesCount = 0; // Inverter asked again after our answer => MATCH!
+    bool handShakeSuccess = false;
+    ScannerState state = SCANNER_STATE_SEARCHING;
+    uint32_t testStartMs = 0;
+    uint32_t testDurationSec = 60; // 60 seconds of test window
 };
 
 struct BankSummary {

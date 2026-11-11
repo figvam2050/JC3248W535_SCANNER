@@ -5,7 +5,7 @@
 
 // JST 1.25 Power/UART connector (P1)
 #define RS485_RX_PIN 44
-#define RS485_TX_PIN 43 // Kept disabled for pure passive sniffer mode
+#define RS485_TX_PIN 43 // Enabled for battery response emulation
 
 class RS485Sniffer {
 public:
@@ -16,6 +16,7 @@ public:
     void updateDemo(BatteryPack* packs, SemaphoreHandle_t mutex);
 
     InverterQuery inverterInfo;
+    bool enableEmulation = true;
 
     // Scanner / Diagnostic Info
     uint32_t getCurrentBaud() const { return _baudRates[_baudIdx]; }
@@ -25,6 +26,7 @@ public:
     bool isAutoScanEnabled() const { return _autoScan; }
     void setAutoScan(bool enable) { _autoScan = enable; }
     void setBaudRate(uint32_t baud);
+    void sendBatteryResponse(uint8_t slaveAddr, uint8_t fc, uint16_t startReg, uint16_t regCount);
 
 private:
     HardwareSerial* _port = nullptr;

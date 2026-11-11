@@ -1989,47 +1989,64 @@ static void update_ui() {
         }
     }
 
-    if (Sniffer.inverterInfo.isDetected) {
+    // State Machine Visualizer
+    static bool s_chime_played_finished = false;
+
+    if (Sniffer.inverterInfo.state == SCANNER_STATE_FINISHED) {
         lv_obj_set_style_bg_color(card_alarm_banner, lv_color_hex(0x064E3B), 0);
         lv_obj_set_style_border_color(card_alarm_banner, lv_color_hex(CLR_EMERALD), 0);
         lv_label_set_text(lbl_alarm_icon, LV_SYMBOL_OK);
         lv_obj_set_style_text_color(lbl_alarm_icon, lv_color_hex(CLR_EMERALD), 0);
 
-        String title = "INVERTER: " + Sniffer.inverterInfo.detectedSignature;
-        lv_label_set_text(lbl_alarm_title, title.c_str());
+        lv_label_set_text(lbl_alarm_title, "✅ TEST COMPLETE! POWER OFF SAFE");
         lv_obj_set_style_text_color(lbl_alarm_title, lv_color_hex(CLR_EMERALD), 0);
 
         char detailBuf[96];
-        snprintf(detailBuf, sizeof(detailBuf), "Addr:0x%02X | Regs:0x%04X..0x%04X | %ums | %s",
+        snprintf(detailBuf, sizeof(detailBuf), "%s | %s | %u Resp OK | SD Saved",
+            Sniffer.inverterInfo.detectedSignature.c_str(),
+            Sniffer.inverterInfo.handShakeSuccess ? "MATCH CONFIRMED!" : "PROBE RECORDED",
+            (unsigned int)Sniffer.inverterInfo.totalResponsesSent
+        );
+        lv_label_set_text(lbl_alarm_details, detailBuf);
+
+        if (!s_chime_played_finished) {
+            s_chime_played_finished = true;
+            BmsAudio.playTestMelody();
+        }
+    } else if (Sniffer.inverterInfo.state == SCANNER_STATE_TESTING) {
+        lv_obj_set_style_bg_color(card_alarm_banner, lv_color_hex(0x0C4A6E), 0);
+        lv_obj_set_style_border_color(card_alarm_banner, lv_color_hex(CLR_CYAN), 0);
+        lv_label_set_text(lbl_alarm_icon, LV_SYMBOL_REFRESH);
+        lv_obj_set_style_text_color(lbl_alarm_icon, lv_color_hex(CLR_CYAN), 0);
+
+        uint32_t elapsedSec = (millis() - Sniffer.inverterInfo.testStartMs) / 1000UL;
+        uint32_t remainSec = (Sniffer.inverterInfo.testDurationSec > elapsedSec) ? (Sniffer.inverterInfo.testDurationSec - elapsedSec) : 0;
+
+        char titleBuf[64];
+        snprintf(titleBuf, sizeof(titleBuf), "TESTING: %s (%us left)", Sniffer.inverterInfo.detectedSignature.c_str(), (unsigned int)remainSec);
+        lv_label_set_text(lbl_alarm_title, titleBuf);
+        lv_obj_set_style_text_color(lbl_alarm_title, lv_color_hex(CLR_CYAN), 0);
+
+        char detailBuf[96];
+        snprintf(detailBuf, sizeof(detailBuf), "Addr:0x%02X | Regs:0x%04X..0x%04X | Resp:%u | %s",
             Sniffer.inverterInfo.targetSlaveAddr,
             Sniffer.inverterInfo.startRegister,
             Sniffer.inverterInfo.startRegister + Sniffer.inverterInfo.registerCount - 1,
-            (unsigned int)Sniffer.inverterInfo.pollIntervalMs,
-            Sniffer.inverterInfo.lastHex
+            (unsigned int)Sniffer.inverterInfo.totalResponsesSent,
+            Sniffer.inverterInfo.handShakeSuccess ? "LINK OK!" : "EMULATING..."
         );
         lv_label_set_text(lbl_alarm_details, detailBuf);
-    } else if (alarms) {
-        lv_obj_set_style_bg_color(card_alarm_banner, lv_color_hex(0x4C0519), 0);
-        lv_obj_set_style_border_color(card_alarm_banner, lv_color_hex(CLR_ROSE), 0);
-        lv_label_set_text(lbl_alarm_icon, LV_SYMBOL_WARNING);
-        lv_obj_set_style_text_color(lbl_alarm_icon, lv_color_hex(CLR_ROSE), 0);
-
-        String title = "FAULT: " + firstAlarmPack;
-        lv_label_set_text(lbl_alarm_title, title.c_str());
-        lv_obj_set_style_text_color(lbl_alarm_title, lv_color_hex(CLR_ROSE), 0);
-
-        lv_label_set_text(lbl_alarm_details, firstAlarmDesc.c_str());
     } else {
-        lv_obj_set_style_bg_color(card_alarm_banner, lv_color_hex(CLR_PANEL_INNER), 0);
-        lv_obj_set_style_border_color(card_alarm_banner, lv_color_hex(CLR_BORDER), 0);
+        lv_obj_set_style_bg_color(card_alarm_banner, lv_color_hex(0x78350F), 0);
+        lv_obj_set_style_border_color(card_alarm_banner, lv_color_hex(CLR_AMBER), 0);
         lv_label_set_text(lbl_alarm_icon, LV_SYMBOL_REFRESH);
         lv_obj_set_style_text_color(lbl_alarm_icon, lv_color_hex(CLR_AMBER), 0);
 
-        lv_label_set_text(lbl_alarm_title, "SCANNING BMS PORT...");
+        lv_label_set_text(lbl_alarm_title, "SEARCHING INVERTER ON BMS PORT...");
         lv_obj_set_style_text_color(lbl_alarm_title, lv_color_hex(CLR_AMBER), 0);
 
         char detailBuf[64];
-        snprintf(detailBuf, sizeof(detailBuf), "Listening for inverter query at %u bps...", (unsigned int)Sniffer.getCurrentBaud());
+        snprintf(detailBuf, sizeof(detailBuf), "Auto-scanning baud rates... [%u bps]", (unsigned int)Sniffer.getCurrentBaud());
         lv_label_set_text(lbl_alarm_details, detailBuf);
     }
 
@@ -2463,6 +2480,11 @@ void setup() {
     BmsAudio.playBeep(1200, 80);
 
     Logger.begin();
+    // Auto-start session logging on boot for full standalone hands-free testing
+    if (Logger.isAvailable()) {
+        Logger.setRawLogging(true);
+        Serial.printf("[System] Auto-started logging session: %s\n", Logger.getCurrentRawLogName());
+    }
 
     build_ui();
 
