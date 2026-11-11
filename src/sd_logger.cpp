@@ -13,9 +13,65 @@ void SdLogger::begin() {
     }
 }
 
-bool SdLogger::toggleBankLog() {
+bool SdLogger::toggleRawLog() {
     if (!_cardAvailable) return false;
-    _bankLogging = !_bankLogging;
+    _rawLogging = !_rawLogging;
+
+    if (_rawLogging) {
+        if (!_rawLogFile) {
+            _rawLogFile = SD_MMC.open("/rs485_raw_sniffer.log", FILE_APPEND);
+            if (_rawLogFile) {
+                _rawLogFile.println("\n=== RS-485 RAW SNIFFER SESSION STARTED ===");
+                _rawLogFile.println("Format: [Time_ms] [Baud] [Status] [Len] HEX_BYTES");
+                _rawLogFile.flush();
+            }
+        }
+    } else {
+        if (_rawLogFile) {
+            _rawLogFile.println("=== RS-485 RAW SNIFFER SESSION STOPPED ===");
+            _rawLogFile.flush();
+            _rawLogFile.close();
+        }
+    }
+    return _rawLogging;
+}
+
+void SdLogger::setRawLogging(bool enable) {
+    if (_rawLogging != enable) {
+        toggleRawLog();
+    }
+}
+
+void SdLogger::logRawPacket(uint32_t baud, const uint8_t* data, size_t len, bool isCrcValid) {
+    if (!_cardAvailable || !_rawLogging || !data || len == 0) return;
+
+    if (!_rawLogFile) {
+        _rawLogFile = SD_MMC.open("/rs485_raw_sniffer.log", FILE_APPEND);
+        if (!_rawLogFile) return;
+    }
+
+    _rawLogFile.printf("[%u] [%u] [%s] [%u] ", 
+        (unsigned int)millis(), 
+        (unsigned int)baud, 
+        isCrcValid ? "CRC_OK" : "CRC_ERR", 
+        (unsigned int)len
+    );
+
+    for (size_t i = 0; i < len; i++) {
+        _rawLogFile.printf("%02X ", data[i]);
+    }
+    _rawLogFile.println();
+
+    _rawPacketsLogged++;
+
+    // Flush to SD card every 3 seconds or every 20 packets to preserve SD life without data loss
+    if (_rawPacketsLogged % 20 == 0 || millis() - _lastRawFlushMs > 3000) {
+        _rawLogFile.flush();
+        _lastRawFlushMs = millis();
+    }
+}
+
+bool SdLogger::toggleBankLog() {
 
     if (_bankLogging) {
         // Init bank log file if not exists
@@ -80,7 +136,7 @@ int SdLogger::getFilesList(FileInfo* outList, int maxFiles) {
     File file = root.openNextFile();
     while (file && count < maxFiles) {
         String name = String(file.name());
-        if (!file.isDirectory() && name.endsWith(".csv")) {
+        if (!file.isDirectory() && (name.endsWith(".csv") || name.endsWith(".log"))) {
             if (name.startsWith("/")) name = name.substring(1);
             strncpy(outList[count].name, name.c_str(), sizeof(outList[count].name) - 1);
             outList[count].name[sizeof(outList[count].name) - 1] = '\0';
@@ -110,7 +166,7 @@ bool SdLogger::deleteAllLogs() {
     File file = root.openNextFile();
     while (file) {
         String name = String(file.name());
-        if (!file.isDirectory() && name.endsWith(".csv")) {
+        if (!file.isDirectory() && (name.endsWith(".csv") || name.endsWith(".log"))) {
             if (!name.startsWith("/")) name = "/" + name;
             SD_MMC.remove(name);
         }

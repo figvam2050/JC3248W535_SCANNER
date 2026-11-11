@@ -1011,9 +1011,55 @@ static void create_settings_tab() {
     lv_obj_set_style_radius(dropdown_delta_thresh, 8, 0);
     lv_obj_add_event_cb(dropdown_delta_thresh, dropdown_delta_thresh_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
-    // 4. System & Hardware Diagnostics Card (140px, moved to 450)
+    // 4. RS-485 Scanner & RAW Sniffer Card
+    lv_obj_t *card_scanner = create_glass_card(tab_settings, 308, 116);
+    lv_obj_align(card_scanner, LV_ALIGN_TOP_MID, 0, 450);
+
+    lv_obj_t *lbl_scan_title = lv_label_create(card_scanner);
+    lv_label_set_text(lbl_scan_title, LV_SYMBOL_FILE " RS-485 RAW SNIFFER RECORDER");
+    lv_obj_set_style_text_color(lbl_scan_title, lv_color_hex(CLR_CYAN), 0);
+    lv_obj_set_style_text_font(lbl_scan_title, &lv_font_montserrat_12, 0);
+    lv_obj_align(lbl_scan_title, LV_ALIGN_TOP_LEFT, 2, 2);
+
+    lv_obj_t *lbl_raw_info = lv_label_create(card_scanner);
+    lv_label_set_text(lbl_raw_info, "Records raw hex frames to /rs485_raw_sniffer.log");
+    lv_obj_set_style_text_color(lbl_raw_info, lv_color_hex(CLR_TEXT_MUTED), 0);
+    lv_obj_set_style_text_font(lbl_raw_info, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(lbl_raw_info, 2, 24);
+
+    lv_obj_t *sw_raw = lv_switch_create(card_scanner);
+    lv_obj_set_size(sw_raw, 48, 22);
+    lv_obj_set_pos(sw_raw, 240, 22);
+    if (Logger.isRawLogging()) lv_obj_add_state(sw_raw, LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(sw_raw, lv_color_hex(CLR_EMERALD), LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_add_event_cb(sw_raw, [](lv_event_t *e){
+        lv_obj_t *target = lv_event_get_target(e);
+        bool en = lv_obj_has_state(target, LV_STATE_CHECKED);
+        Logger.setRawLogging(en);
+        if (s_sound_enabled) BmsAudio.playClick();
+    }, LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_obj_t *lbl_autoscan_title = lv_label_create(card_scanner);
+    lv_label_set_text(lbl_autoscan_title, "Auto-scan Baud Rates (9600..115200):");
+    lv_obj_set_style_text_color(lbl_autoscan_title, lv_color_hex(CLR_TEXT_MUTED), 0);
+    lv_obj_set_style_text_font(lbl_autoscan_title, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(lbl_autoscan_title, 2, 58);
+
+    lv_obj_t *sw_autoscan = lv_switch_create(card_scanner);
+    lv_obj_set_size(sw_autoscan, 48, 22);
+    lv_obj_set_pos(sw_autoscan, 240, 56);
+    if (Sniffer.isAutoScanEnabled()) lv_obj_add_state(sw_autoscan, LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(sw_autoscan, lv_color_hex(CLR_CYAN), LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_add_event_cb(sw_autoscan, [](lv_event_t *e){
+        lv_obj_t *target = lv_event_get_target(e);
+        bool en = lv_obj_has_state(target, LV_STATE_CHECKED);
+        Sniffer.setAutoScan(en);
+        if (s_sound_enabled) BmsAudio.playClick();
+    }, LV_EVENT_VALUE_CHANGED, NULL);
+
+    // 5. System & Hardware Diagnostics Card (140px, moved to 574)
     lv_obj_t *card_sys = create_glass_card(tab_settings, 308, 140);
-    lv_obj_align(card_sys, LV_ALIGN_TOP_MID, 0, 450);
+    lv_obj_align(card_sys, LV_ALIGN_TOP_MID, 0, 574);
 
     lv_obj_t *lbl_sys_title = lv_label_create(card_sys);
     lv_label_set_text(lbl_sys_title, LV_SYMBOL_SETTINGS " HARDWARE SPECIFICATION");
@@ -1790,12 +1836,15 @@ static void update_ui() {
         }
     }
 
-    // RS485 / Scanner status indication on top bar
+    // RS485 / Scanner status indication on top bar: shows Baud + Pkts
+    char top_status[24];
     if (Sniffer.demoMode) {
-        lv_label_set_text(lbl_top_ip, "DEMO");
+        snprintf(top_status, sizeof(top_status), "SCAN %u", (unsigned int)Sniffer.getCurrentBaud());
+        lv_label_set_text(lbl_top_ip, top_status);
         lv_obj_set_style_text_color(lbl_top_ip, lv_color_hex(CLR_AMBER), 0);
     } else {
-        lv_label_set_text(lbl_top_ip, "BUS ACTIVE");
+        snprintf(top_status, sizeof(top_status), "%u|%upk", (unsigned int)Sniffer.getCurrentBaud(), (unsigned int)Sniffer.getRxPackets());
+        lv_label_set_text(lbl_top_ip, top_status);
         lv_obj_set_style_text_color(lbl_top_ip, lv_color_hex(CLR_EMERALD), 0);
     }
 

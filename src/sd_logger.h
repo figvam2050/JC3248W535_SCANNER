@@ -41,6 +41,13 @@ public:
     // Periodic worker
     void update(const BatteryPack* packs, size_t count);
 
+    // Raw RS485 Packet Logger
+    bool toggleRawLog();
+    bool isRawLogging() const { return _rawLogging; }
+    void setRawLogging(bool enable);
+    void logRawPacket(uint32_t baud, const uint8_t* data, size_t len, bool isCrcValid);
+    uint32_t getRawPacketsLogged() const { return _rawPacketsLogged; }
+
     uint32_t getBankRows() const { return _bankRows; }
     uint32_t getPackRows(uint8_t packIdx) const;
 
@@ -48,6 +55,11 @@ private:
     bool _cardAvailable = false;
     bool _bankLogging = false;
     uint32_t _bankRows = 0;
+
+    bool _rawLogging = false;
+    uint32_t _rawPacketsLogged = 0;
+    File _rawLogFile;
+    uint32_t _lastRawFlushMs = 0;
 
     bool _alarmLogging = false;
     uint32_t _alarmRows = 0;

@@ -1,6 +1,10 @@
 #include "rs485_sniffer.h"
+#include "sd_logger.h"
 
 RS485Sniffer Sniffer;
+
+const uint32_t RS485Sniffer::_baudRates[] = {9600, 19200, 115200, 2400};
+const size_t RS485Sniffer::_baudRatesCount = sizeof(RS485Sniffer::_baudRates) / sizeof(RS485Sniffer::_baudRates[0]);
 
 uint16_t RS485Sniffer::calculateCRC(const uint8_t* buf, size_t len) {
     uint16_t crc = 0xFFFF;
@@ -18,11 +22,31 @@ uint16_t RS485Sniffer::calculateCRC(const uint8_t* buf, size_t len) {
     return crc;
 }
 
+void RS485Sniffer::setBaudRate(uint32_t baud) {
+    if (!_port) return;
+    _port->end();
+    delay(10);
+    _port->begin(baud, SERIAL_8N1, RS485_RX_PIN, -1);
+    _rxLen = 0;
+    _lastBaudSwitchMs = millis();
+    Serial.printf("[RS485] Baud rate set to %u bps\n", baud);
+}
+
+void RS485Sniffer::nextBaudRate() {
+    _baudIdx = (_baudIdx + 1) % _baudRatesCount;
+    setBaudRate(_baudRates[_baudIdx]);
+}
+
 void RS485Sniffer::begin(HardwareSerial* serialPort) {
     _port = serialPort;
+    _baudIdx = 0;
+    _lastBaudSwitchMs = millis();
     // Passive sniffer on GPIO 44 (RX only, TX not used)
-    _port->begin(9600, SERIAL_8N1, RS485_RX_PIN, -1);
+    _port->begin(_baudRates[_baudIdx], SERIAL_8N1, RS485_RX_PIN, -1);
     _rxLen = 0;
+    _rxPackets = 0;
+    _crcErrors = 0;
+    _rawBytesCount = 0;
 }
 
 void RS485Sniffer::parseFrame(const uint8_t* frame, size_t len, BatteryPack* packs, SemaphoreHandle_t mutex) {
@@ -36,10 +60,23 @@ void RS485Sniffer::parseFrame(const uint8_t* frame, size_t len, BatteryPack* pac
 
     // Check CRC
     uint16_t expectedCrc = (frame[len - 1] << 8) | frame[len - 2];
-    if (calculateCRC(frame, len - 2) != expectedCrc) return;
+    bool crcOk = (calculateCRC(frame, len - 2) == expectedCrc);
 
-    // We have real RS485 traffic: disable demo mode!
-    demoMode = false;
+    // If raw logger is active on MicroSD, record frame
+    Logger.logRawPacket(_baudRates[_baudIdx], frame, len, crcOk);
+
+    if (!crcOk) {
+        _crcErrors++;
+        return;
+    }
+
+    _rxPackets++;
+
+    // We have real verified RS485 traffic: disable demo mode and lock baud rate!
+    if (demoMode) {
+        demoMode = false;
+        Serial.printf("[RS485] Valid Modbus traffic detected at %u bps! Demo mode disabled.\n", _baudRates[_baudIdx]);
+    }
 
     // Parse registers
     size_t regCount = byteCount / 2;
@@ -101,15 +138,16 @@ void RS485Sniffer::parseFrame(const uint8_t* frame, size_t len, BatteryPack* pac
 }
 
 void RS485Sniffer::update(BatteryPack* packs, SemaphoreHandle_t mutex) {
-    if (demoMode) {
-        updateDemo(packs, mutex);
-        return;
-    }
-
     if (!_port) return;
 
+    // 1. Read all incoming bytes from UART
+    size_t newBytes = 0;
     while (_port->available()) {
         uint8_t b = _port->read();
+        _rawBytesCount++;
+        newBytes++;
+        _lastByteTimeMs = millis();
+
         if (_rxLen < sizeof(_rxBuf)) {
             _rxBuf[_rxLen++] = b;
         } else {
@@ -117,7 +155,16 @@ void RS485Sniffer::update(BatteryPack* packs, SemaphoreHandle_t mutex) {
         }
     }
 
-    // Process frame if complete
+    // 2. Modbus inter-frame silence gap (t3.5 timeout)
+    // If line has been silent > 20ms and frame is incomplete, reset buffer
+    if (_rxLen > 0 && (millis() - _lastByteTimeMs > 25)) {
+        // If data looks like noise or partial broken frame, log if enabled and clear
+        if (_rxLen < 5) {
+            _rxLen = 0;
+        }
+    }
+
+    // 3. Process Modbus frame if complete
     if (_rxLen >= 5) {
         size_t i = 0;
         while (i + 4 < _rxLen) {
@@ -141,6 +188,19 @@ void RS485Sniffer::update(BatteryPack* packs, SemaphoreHandle_t mutex) {
             memmove(_rxBuf, &_rxBuf[i], _rxLen - i);
             _rxLen -= i;
         }
+    }
+
+    // 4. Auto-scan baud rate if no valid packets received within 3.5 seconds
+    if (_autoScan && demoMode) {
+        if (millis() - _lastBaudSwitchMs > 3500) {
+            nextBaudRate();
+        }
+    }
+
+    // 5. If demoMode is still active, run simulation for screen preview
+    if (demoMode) {
+        updateDemo(packs, mutex);
+        return;
     }
 
     // Check timeouts for offline state (> 6 sec silence)
