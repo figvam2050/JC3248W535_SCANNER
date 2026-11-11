@@ -148,6 +148,8 @@ void RS485Sniffer::parseFrame(const uint8_t* frame, size_t len, BatteryPack* pac
         // Auto signature identification
         if (addr == 0x01 && (startReg == 0x0000 || startReg == 0x0100)) {
             inverterInfo.detectedSignature = "Deye / Luxpower / Pylontech";
+        } else if (addr == 0x01 && (startReg >= 0x1000 && startReg <= 0x1100)) {
+            inverterInfo.detectedSignature = "Felicity Solar Modbus";
         } else if (addr == 0xD6 || addr == 0xD7) {
             inverterInfo.detectedSignature = "Huawei ESM";
         } else if (startReg >= 0x3000 && startReg <= 0x3500) {
