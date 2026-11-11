@@ -149,7 +149,7 @@ static lv_obj_t *sw_sound = NULL;
 static lv_obj_t *sw_autolog = NULL;
 static uint8_t s_current_brightness = BRIGHTNESS_HIGH;
 static bool s_sound_enabled = true;
-static uint32_t s_screen_off_timeout_ms = 60000; // Default: 1 minute (0 = Never)
+static uint32_t s_screen_off_timeout_ms = 0; // Default: Never turn off during testing!
 
 enum ScreenSleepMode {
     SLEEP_MODE_OFF = 0,    // 100% Turn off backlight
