@@ -1022,7 +1022,7 @@ static void create_settings_tab() {
     lv_obj_align(lbl_scan_title, LV_ALIGN_TOP_LEFT, 2, 2);
 
     lv_obj_t *lbl_raw_info = lv_label_create(card_scanner);
-    lv_label_set_text(lbl_raw_info, "Records raw hex frames to /rs485_raw_sniffer.log");
+    lv_label_set_text(lbl_raw_info, "Session logger (/inverter_scan_XX.log)");
     lv_obj_set_style_text_color(lbl_raw_info, lv_color_hex(CLR_TEXT_MUTED), 0);
     lv_obj_set_style_text_font(lbl_raw_info, &lv_font_montserrat_10, 0);
     lv_obj_set_pos(lbl_raw_info, 2, 24);

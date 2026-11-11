@@ -19,18 +19,31 @@ bool SdLogger::toggleRawLog() {
 
     if (_rawLogging) {
         if (!_rawLogFile) {
-            _rawLogFile = SD_MMC.open("/rs485_raw_sniffer.log", FILE_APPEND);
+            // Find next available session number: /inverter_scan_01.log, _02.log...
+            uint16_t sessionNum = 1;
+            char path[32];
+            while (sessionNum < 1000) {
+                snprintf(path, sizeof(path), "/inverter_scan_%02u.log", sessionNum);
+                if (!SD_MMC.exists(path)) break;
+                sessionNum++;
+            }
+            strncpy(_currentRawFileName, path, sizeof(_currentRawFileName) - 1);
+            _currentRawFileName[sizeof(_currentRawFileName) - 1] = '\0';
+
+            _rawLogFile = SD_MMC.open(_currentRawFileName, FILE_WRITE);
             if (_rawLogFile) {
-                _rawLogFile.println("\n=== RS-485 RAW SNIFFER SESSION STARTED ===");
+                _rawLogFile.printf("=== INVERTER BMS SCANNER SESSION #%u STARTED ===\n", sessionNum);
                 _rawLogFile.println("Format: [Time_ms] [Baud] [Status] [Len] HEX_BYTES");
                 _rawLogFile.flush();
+                Serial.printf("[SD Logger] New session started: %s\n", _currentRawFileName);
             }
         }
     } else {
         if (_rawLogFile) {
-            _rawLogFile.println("=== RS-485 RAW SNIFFER SESSION STOPPED ===");
+            _rawLogFile.println("=== INVERTER BMS SCANNER SESSION STOPPED ===");
             _rawLogFile.flush();
             _rawLogFile.close();
+            Serial.printf("[SD Logger] Session closed: %s (Total packets: %u)\n", _currentRawFileName, _rawPacketsLogged);
         }
     }
     return _rawLogging;
@@ -46,7 +59,10 @@ void SdLogger::logRawPacket(uint32_t baud, const uint8_t* data, size_t len, bool
     if (!_cardAvailable || !_rawLogging || !data || len == 0) return;
 
     if (!_rawLogFile) {
-        _rawLogFile = SD_MMC.open("/rs485_raw_sniffer.log", FILE_APPEND);
+        if (_currentRawFileName[0] == '\0') {
+            snprintf(_currentRawFileName, sizeof(_currentRawFileName), "/inverter_scan_01.log");
+        }
+        _rawLogFile = SD_MMC.open(_currentRawFileName, FILE_APPEND);
         if (!_rawLogFile) return;
     }
 

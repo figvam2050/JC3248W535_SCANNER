@@ -47,6 +47,7 @@ public:
     void setRawLogging(bool enable);
     void logRawPacket(uint32_t baud, const uint8_t* data, size_t len, bool isCrcValid);
     uint32_t getRawPacketsLogged() const { return _rawPacketsLogged; }
+    const char* getCurrentRawLogName() const { return _currentRawFileName; }
 
     uint32_t getBankRows() const { return _bankRows; }
     uint32_t getPackRows(uint8_t packIdx) const;
@@ -59,6 +60,7 @@ private:
     bool _rawLogging = false;
     uint32_t _rawPacketsLogged = 0;
     File _rawLogFile;
+    char _currentRawFileName[32] = {0};
     uint32_t _lastRawFlushMs = 0;
 
     bool _alarmLogging = false;
