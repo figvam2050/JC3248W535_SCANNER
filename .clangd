@@ -1,0 +1,17 @@
+CompileFlags:
+  Add:
+    - -Wno-unknown-warning-option
+    - -Wno-unused-command-line-argument
+  Remove:
+    - -mlongcalls
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
+    - -mfix-esp32-psram-cache-issue
+    - -mfix-esp32-psram-cache-strategy=memw
+
+Diagnostics:
+  Suppress:
+    - drv_unknown_argument
+    - drv_unknown_argument_with_suggestion
+    - pp_file_not_found
+    - fatal_too_many_errors
