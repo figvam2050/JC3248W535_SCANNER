@@ -5,7 +5,6 @@
 #include <time.h>
 #include "bms_data.h"
 #include "rs485_sniffer.h"
-#include "web_gateway.h"
 #include "audio_hal.h"
 #include "sd_logger.h"
 
@@ -164,7 +163,7 @@ static ScreenSleepMode s_sleep_mode = SLEEP_MODE_SAVER;
 // Settings Controls & Widgets
 static lv_obj_t *sw_demo = NULL;
 static lv_obj_t *dropdown_delta_thresh = NULL;
-static lv_obj_t *lbl_wifi_scan_res = NULL;
+// Wi-Fi objects removed - Autonomous Scanner Edition
 static uint16_t s_alert_delta_thresh_mv = 50; // Default 50mV
 
 // Fullscreen Screensaver Overlay
@@ -288,7 +287,7 @@ static lv_obj_t *lbl_bank_log = NULL;
 // Top Header Widgets (Fixed on top of screen)
 static lv_obj_t *lbl_top_power_src = NULL;
 static lv_obj_t *lbl_top_ip = NULL;
-static lv_obj_t *wifi_bar_obj[4] = {NULL, NULL, NULL, NULL};
+// Status bar indicators
 
 // Dedicated Logs Tab Widgets
 static lv_obj_t *tab_logs = NULL;
@@ -823,34 +822,6 @@ static void btn_audio_test_cb(lv_event_t *e) {
     BmsAudio.playTestMelody();
 }
 
-static void btn_wifi_scan_cb(lv_event_t *e) {
-    if (s_sound_enabled) BmsAudio.playClick();
-    if (!lbl_wifi_scan_res) return;
-
-    lv_label_set_text(lbl_wifi_scan_res, "Scanning Wi-Fi...");
-    int n = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/true);
-    if (n <= 0) {
-        lv_label_set_text(lbl_wifi_scan_res, "No Wi-Fi networks found");
-    } else {
-        String res = "Found " + String(n) + " nets:\n";
-        int limit = (n > 4) ? 4 : n;
-        for (int i = 0; i < limit; i++) {
-            res += String(i + 1) + ". " + WiFi.SSID(i) + " (" + String(WiFi.RSSI(i)) + "dBm)\n";
-        }
-        if (n > 4) res += "...and " + String(n - 4) + " more";
-        lv_label_set_text(lbl_wifi_scan_res, res.c_str());
-    }
-}
-
-static void btn_wifi_ap_cb(lv_event_t *e) {
-    if (s_sound_enabled) BmsAudio.playClick();
-    Gateway.startAP();
-    if (lbl_wifi_scan_res) {
-        lv_label_set_text(lbl_wifi_scan_res, "AP Started: 'BMS-Display-AP'\nPass: 12345678 (IP: 192.168.4.1)");
-        lv_obj_set_style_text_color(lbl_wifi_scan_res, lv_color_hex(CLR_EMERALD), 0);
-    }
-}
-
 static void dropdown_delta_thresh_cb(lv_event_t *e) {
     lv_obj_t *dd = lv_event_get_target(e);
     uint16_t sel = lv_dropdown_get_selected(dd);
@@ -1040,57 +1011,9 @@ static void create_settings_tab() {
     lv_obj_set_style_radius(dropdown_delta_thresh, 8, 0);
     lv_obj_add_event_cb(dropdown_delta_thresh, dropdown_delta_thresh_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
-    // 4. Wi-Fi Scanner & Network Card (136px, moved to 450)
-    lv_obj_t *card_wifi = create_glass_card(tab_settings, 308, 136);
-    lv_obj_align(card_wifi, LV_ALIGN_TOP_MID, 0, 450);
-
-    lv_obj_t *lbl_wifi_title = lv_label_create(card_wifi);
-    lv_label_set_text(lbl_wifi_title, LV_SYMBOL_WIFI " WI-FI CONTROL");
-    lv_obj_set_style_text_color(lbl_wifi_title, lv_color_hex(CLR_CYAN), 0);
-    lv_obj_set_style_text_font(lbl_wifi_title, &lv_font_montserrat_12, 0);
-    lv_obj_align(lbl_wifi_title, LV_ALIGN_TOP_LEFT, 2, 2);
-
-    // Scan Button
-    lv_obj_t *btn_wifi_scan = lv_btn_create(card_wifi);
-    lv_obj_set_size(btn_wifi_scan, 80, 26);
-    lv_obj_align(btn_wifi_scan, LV_ALIGN_TOP_RIGHT, -94, 0);
-    lv_obj_set_style_bg_color(btn_wifi_scan, lv_color_hex(CLR_PANEL_INNER), 0);
-    lv_obj_set_style_border_color(btn_wifi_scan, lv_color_hex(CLR_CYAN), 0);
-    lv_obj_set_style_border_width(btn_wifi_scan, 1, 0);
-    lv_obj_set_style_radius(btn_wifi_scan, 6, 0);
-    lv_obj_add_event_cb(btn_wifi_scan, btn_wifi_scan_cb, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *lbl_btn_scan = lv_label_create(btn_wifi_scan);
-    lv_label_set_text(lbl_btn_scan, LV_SYMBOL_REFRESH " SCAN");
-    lv_obj_set_style_text_color(lbl_btn_scan, lv_color_hex(CLR_CYAN), 0);
-    lv_obj_set_style_text_font(lbl_btn_scan, &lv_font_montserrat_10, 0);
-    lv_obj_align(lbl_btn_scan, LV_ALIGN_CENTER, 0, 0);
-
-    // Start AP Hotspot Button
-    lv_obj_t *btn_wifi_ap = lv_btn_create(card_wifi);
-    lv_obj_set_size(btn_wifi_ap, 88, 26);
-    lv_obj_align(btn_wifi_ap, LV_ALIGN_TOP_RIGHT, -2, 0);
-    lv_obj_set_style_bg_color(btn_wifi_ap, lv_color_hex(CLR_PANEL_INNER), 0);
-    lv_obj_set_style_border_color(btn_wifi_ap, lv_color_hex(CLR_EMERALD), 0);
-    lv_obj_set_style_border_width(btn_wifi_ap, 1, 0);
-    lv_obj_set_style_radius(btn_wifi_ap, 6, 0);
-    lv_obj_add_event_cb(btn_wifi_ap, btn_wifi_ap_cb, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *lbl_btn_ap = lv_label_create(btn_wifi_ap);
-    lv_label_set_text(lbl_btn_ap, LV_SYMBOL_WIFI " AP MODE");
-    lv_obj_set_style_text_color(lbl_btn_ap, lv_color_hex(CLR_EMERALD), 0);
-    lv_obj_set_style_text_font(lbl_btn_ap, &lv_font_montserrat_10, 0);
-    lv_obj_align(lbl_btn_ap, LV_ALIGN_CENTER, 0, 0);
-
-    lbl_wifi_scan_res = lv_label_create(card_wifi);
-    lv_label_set_text(lbl_wifi_scan_res, "Scan nets or tap AP MODE to reconfigure Wi-Fi");
-    lv_obj_set_style_text_color(lbl_wifi_scan_res, lv_color_white(), 0);
-    lv_obj_set_style_text_font(lbl_wifi_scan_res, &lv_font_montserrat_10, 0);
-    lv_obj_set_pos(lbl_wifi_scan_res, 4, 30);
-
-    // 5. System & Network Diagnostics Card (140px, moved to 592)
+    // 4. System & Hardware Diagnostics Card (140px, moved to 450)
     lv_obj_t *card_sys = create_glass_card(tab_settings, 308, 140);
-    lv_obj_align(card_sys, LV_ALIGN_TOP_MID, 0, 592);
+    lv_obj_align(card_sys, LV_ALIGN_TOP_MID, 0, 450);
 
     lv_obj_t *lbl_sys_title = lv_label_create(card_sys);
     lv_label_set_text(lbl_sys_title, LV_SYMBOL_SETTINGS " HARDWARE SPECIFICATION");
@@ -1257,27 +1180,12 @@ static void build_ui() {
     lv_obj_set_style_text_font(lbl_top_power_src, &lv_font_montserrat_12, 0);
     lv_obj_align(lbl_top_power_src, LV_ALIGN_RIGHT_MID, -2, 0);
 
-    // Right Side: Dynamic Wi-Fi Signal Antenna (4 vertical bars)
-    // Placed between IP and USB icon, with clear 6px spacing from USB
-    static const uint8_t bar_heights[4] = {3, 6, 9, 12};
-    for (int b = 0; b < 4; b++) {
-        wifi_bar_obj[b] = lv_obj_create(top_nav_bar);
-        lv_obj_set_size(wifi_bar_obj[b], 3, bar_heights[b]);
-        lv_obj_align(wifi_bar_obj[b], LV_ALIGN_BOTTOM_RIGHT, -34 + (b * 4), -8);
-        lv_obj_set_style_bg_color(wifi_bar_obj[b], lv_color_hex(0x334155), 0);
-        lv_obj_set_style_bg_opa(wifi_bar_obj[b], LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(wifi_bar_obj[b], 0, 0);
-        lv_obj_set_style_radius(wifi_bar_obj[b], 1, 0);
-        lv_obj_set_style_pad_all(wifi_bar_obj[b], 0, 0);
-        lv_obj_clear_flag(wifi_bar_obj[b], LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-    }
-
-    // Right Side: IP Address - font 14px, shifted left to -50
+    // Right Side: Mode status indicator (Scanner / Bus Active)
     lbl_top_ip = lv_label_create(top_nav_bar);
-    lv_label_set_text(lbl_top_ip, "...");
+    lv_label_set_text(lbl_top_ip, "SCANNER");
     lv_obj_set_style_text_color(lbl_top_ip, lv_color_hex(CLR_CYAN), 0);
-    lv_obj_set_style_text_font(lbl_top_ip, &lv_font_montserrat_14, 0);
-    lv_obj_align(lbl_top_ip, LV_ALIGN_RIGHT_MID, -50, 0);
+    lv_obj_set_style_text_font(lbl_top_ip, &lv_font_montserrat_12, 0);
+    lv_obj_align(lbl_top_ip, LV_ALIGN_RIGHT_MID, -24, 0);
 
     // Create TabView with tab_size = 0 (completely disables default button matrix header!)
     tabview = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 0);
@@ -1882,34 +1790,13 @@ static void update_ui() {
         }
     }
 
-    // Wi-Fi Status & Dynamic Antenna Signal Bars
-    uint8_t active_bars = 0;
-    if (Gateway.isConnected()) {
-        lv_label_set_text(lbl_top_ip, Gateway.getIpAddress().c_str());
-        int rssi = Gateway.getRssi();
-        if (rssi >= -60) active_bars = 4;       // Excellent
-        else if (rssi >= -70) active_bars = 3;  // Good
-        else if (rssi >= -80) active_bars = 2;  // Fair
-        else active_bars = 1;                   // Weak
-    } else if (Gateway.isAPMode()) {
-        lv_label_set_text(lbl_top_ip, "192.168.4.1 (AP)");
-        active_bars = 4; // AP mode broadcast active
+    // RS485 / Scanner status indication on top bar
+    if (Sniffer.demoMode) {
+        lv_label_set_text(lbl_top_ip, "DEMO");
+        lv_obj_set_style_text_color(lbl_top_ip, lv_color_hex(CLR_AMBER), 0);
     } else {
-        lv_label_set_text(lbl_top_ip, "Offline");
-        active_bars = 0; // Disconnected
-    }
-
-    for (int b = 0; b < 4; b++) {
-        if (wifi_bar_obj[b]) {
-            if (b < active_bars) {
-                // Lit bar: Emerald green for strong, amber for weak (1 bar)
-                uint32_t bar_clr = (active_bars == 1) ? CLR_AMBER : CLR_EMERALD;
-                lv_obj_set_style_bg_color(wifi_bar_obj[b], lv_color_hex(bar_clr), 0);
-            } else {
-                // Inactive dim bar
-                lv_obj_set_style_bg_color(wifi_bar_obj[b], lv_color_hex(0x334155), 0);
-            }
-        }
+        lv_label_set_text(lbl_top_ip, "BUS ACTIVE");
+        lv_obj_set_style_text_color(lbl_top_ip, lv_color_hex(CLR_EMERALD), 0);
     }
 
     // Power source indication (compact symbol only)
@@ -2442,7 +2329,6 @@ static void update_ui() {
 void sniffer_task(void *pvParameters) {
     while (true) {
         Sniffer.update(g_packs, dataMutex);
-        Gateway.loop();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
@@ -2511,11 +2397,6 @@ void setup() {
     build_ui();
 
     Sniffer.begin();
-    Gateway.begin(g_packs, dataMutex);
-
-    // Configure NTP time for Kyiv timezone: EET/EEST (UTC+2 in winter, UTC+3 with daylight saving time)
-    // POSIX TZ string for Kyiv: "EET-2EEST,M3.5.0/3,M10.5.0/4"
-    configTzTime("EET-2EEST,M3.5.0/3,M10.5.0/4", "pool.ntp.org", "time.google.com", "time.cloudflare.com");
 
     xTaskCreatePinnedToCore(
         sniffer_task,
