@@ -31,7 +31,10 @@ sd_backup/
 logs/
 *.csv
 
-# Backup binaries (uncomment if you don't want to track 16MB firmware binary in git)
-# backup/*.bin
+# Backup binaries (don't track large firmware dumps in git)
+backup/
+*.bin
+*.hex
+*.elf
 compile_commands.json
 .cache/
